@@ -12,8 +12,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Configuration
 const CONFIG = {
-    slackWebhookUrl: 'YOUR_SLACK_WEBHOOK_URL_HERE',
-    slackSigningSecret: 'YOUR_SLACK_SIGNING_SECRET_HERE',
+    slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
+    slackSigningSecret: process.env.SLACK_SIGNING_SECRET,
     catererEmail: 'gcohen@atjc.org', // Will be updated later
     nathalieUserId: 'U081RLR5WRW',
     
