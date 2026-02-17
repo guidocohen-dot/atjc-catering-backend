@@ -1,0 +1,21 @@
+{
+  "name": "atjc-catering-system",
+  "version": "1.0.0",
+  "description": "Catering event request system for Aventura Turnberry Jewish Center",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "body-parser": "^1.20.2",
+    "nodemailer": "^6.9.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
