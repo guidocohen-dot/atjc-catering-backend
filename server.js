@@ -35,8 +35,8 @@ const transporter = nodemailer.createTransport({
 });
 
 // Store pending requests (in production, use a database)
-const pendingRequests = new Map();
-
+// No longer needed - form data is stored in Slack message buttons
+// const pendingRequests = new Map();
 // CORS middleware
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
@@ -87,152 +87,110 @@ function formatTime(timeString) {
     return `${displayHour}:${minutes} ${ampm}`;
 }
 
-// POST endpoint - Handle form submission
+// POST endpoint - Submit catering request
 app.post('/api/submit-request', async (req, res) => {
     try {
         const formData = req.body;
-        const requestId = crypto.randomBytes(16).toString('hex');
+        const requestId = `req_${Date.now()}`;
         
-        // Store request for later reference
-        pendingRequests.set(requestId, formData);
+        console.log('Received request:', requestId);
         
-        // Format dates and times
-        const eventDate = formatDate(formData.eventDate);
-        const setupDate = formatDate(formData.setupStartDate);
-        const teardownDate = formatDate(formData.teardownDate);
-        
-        // Create Slack message with interactive buttons
+        // Create Slack message with embedded form data
         const slackMessage = {
-            text: `🎉 New Catering Event Request`,
+            text: `New Catering Request: ${formData.eventName}`,
             blocks: [
                 {
-                    type: "header",
+                    type: 'header',
                     text: {
-                        type: "plain_text",
-                        text: "🎉 New Catering Event Request",
+                        type: 'plain_text',
+                        text: '🍽️ New Catering Event Request',
                         emoji: true
                     }
                 },
                 {
-                    type: "section",
+                    type: 'section',
                     fields: [
                         {
-                            type: "mrkdwn",
+                            type: 'mrkdwn',
                             text: `*Event:*\n${formData.eventName}`
                         },
                         {
-                            type: "mrkdwn",
+                            type: 'mrkdwn',
                             text: `*Client:*\n${formData.clientName}`
                         },
                         {
-                            type: "mrkdwn",
-                            text: `*Event Date:*\n${eventDate}`
+                            type: 'mrkdwn',
+                            text: `*Date:*\n${formData.eventDate}`
                         },
                         {
-                            type: "mrkdwn",
-                            text: `*Guest Count:*\n${formData.guestCount}`
+                            type: 'mrkdwn',
+                            text: `*Guests:*\n${formData.expectedGuests}`
+                        }
+                    ]
+                },
+                {
+                    type: 'section',
+                    text: {
+                        type: 'mrkdwn',
+                        text: `*Rooms Requested:*\n${formData.roomsRequested.join(', ')}`
+                    }
+                },
+                {
+                    type: 'section',
+                    text: {
+                        type: 'mrkdwn',
+                        text: `*Party Planner:*\n${formData.partyPlannerName}\n${formData.partyPlannerEmail}\n${formData.partyPlannerPhone}`
+                    }
+                },
+                {
+                    type: 'actions',
+                    block_id: 'approval_actions',
+                    elements: [
+                        {
+                            type: 'button',
+                            text: {
+                                type: 'plain_text',
+                                text: '✅ Approve All',
+                                emoji: true
+                            },
+                            style: 'primary',
+                            action_id: 'approve_all',
+                            value: JSON.stringify({
+                                requestId: requestId,
+                                formData: formData
+                            })
+                        },
+                        {
+                            type: 'button',
+                            text: {
+                                type: 'plain_text',
+                                text: '⚠️ Partial Approval',
+                                emoji: true
+                            },
+                            action_id: 'partial_approval',
+                            value: JSON.stringify({
+                                requestId: requestId,
+                                formData: formData
+                            })
+                        },
+                        {
+                            type: 'button',
+                            text: {
+                                type: 'plain_text',
+                                text: '❌ Deny',
+                                emoji: true
+                            },
+                            style: 'danger',
+                            action_id: 'deny_request',
+                            value: JSON.stringify({
+                                requestId: requestId,
+                                formData: formData
+                            })
                         }
                     ]
                 }
             ]
         };
-        
-        // Add officiating rabbi if provided
-        if (formData.officiatingRabbi) {
-            slackMessage.blocks.push({
-                type: "section",
-                text: {
-                    type: "mrkdwn",
-                    text: `*Officiating Rabbi:*\n${formData.officiatingRabbi}`
-                }
-            });
-        }
-        
-        slackMessage.blocks.push(
-            {
-                type: "section",
-                text: {
-                    type: "mrkdwn",
-                    text: `*📅 Timeline*\n• Setup begins: ${setupDate} at ${formatTime(formData.setupStartTime)}\n• Event: ${formatTime(formData.eventStartTime)} - ${formatTime(formData.eventEndTime)}\n• Teardown complete: ${teardownDate} at ${formatTime(formData.teardownTime)}`
-                }
-            },
-            {
-                type: "section",
-                fields: [
-                    {
-                        type: "mrkdwn",
-                        text: `*Party Planner:*\n${formData.plannerName}\n${formData.plannerEmail}\n${formData.plannerPhone}`
-                    },
-                    {
-                        type: "mrkdwn",
-                        text: `*Parking & Music:*\nValet: ${formData.valetParking}\nEasement: ${formData.easementParking}\nLoud Music (work hours): ${formData.loudMusic}`
-                    }
-                ]
-            },
-            {
-                type: "section",
-                text: {
-                    type: "mrkdwn",
-                    text: `*Rooms Requested:*\n${formData.rooms.join('\n')}`
-                }
-            }
-        );
-        
-        // Add additional notes if provided
-        if (formData.additionalNotes) {
-            slackMessage.blocks.push({
-                type: "section",
-                text: {
-                    type: "mrkdwn",
-                    text: `*Additional Notes:*\n${formData.additionalNotes}`
-                }
-            });
-        }
-        
-        // Add divider and action buttons
-        slackMessage.blocks.push(
-            {
-                type: "divider"
-            },
-            {
-                type: "actions",
-                block_id: `request_${requestId}`,
-                elements: [
-                    {
-                        type: "button",
-                        text: {
-                            type: "plain_text",
-                            text: "✅ Approve All",
-                            emoji: true
-                        },
-                        style: "primary",
-                        value: requestId,
-                        action_id: "approve_all"
-                    },
-                    {
-                        type: "button",
-                        text: {
-                            type: "plain_text",
-                            text: "⚠️ Partial Approval",
-                            emoji: true
-                        },
-                        value: requestId,
-                        action_id: "partial_approval"
-                    },
-                    {
-                        type: "button",
-                        text: {
-                            type: "plain_text",
-                            text: "❌ Deny",
-                            emoji: true
-                        },
-                        style: "danger",
-                        value: requestId,
-                        action_id: "deny_request"
-                    }
-                ]
-            }
-        );
         
         // Send to Slack
         const slackResponse = await fetch(CONFIG.slackWebhookUrl, {
@@ -253,47 +211,45 @@ app.post('/api/submit-request', async (req, res) => {
     }
 });
 
-// POST endpoint - Handle Slack button interactions
+// POST endpoint – Handle Slack button interactions
 app.post('/api/slack/interactions', async (req, res) => {
     try {
-        console.log('=== SLACK INTERACTION RECEIVED ===', JSON.stringify(req.body).substring(0, 200));
+        console.log('=== SLACK INTERACTION RECEIVED ===');
+        
         // Verify Slack signature
-if (false && !verifySlackSignature(req)) {
+        if (false && !verifySlackSignature(req)) {
             return res.status(401).send('Invalid signature');
         }
         
         const payload = JSON.parse(req.body.payload);
         const action = payload.actions[0];
-        const requestId = action.value;
-        const user = payload.user;
+        
+        console.log('Action ID:', action.action_id);
+        
+        // Parse form data from button value
+        const buttonData = JSON.parse(action.value);
+        const requestId = buttonData.requestId;
+        const formData = buttonData.formData;
+        
+        console.log('Request ID:', requestId);
+        console.log('Form data found:', !!formData);
         
         // Check if user is authorized (Nathalie)
-        if (user.id !== CONFIG.nathalieUserId) {
+        if (payload.user.id !== CONFIG.nathalieUserId) {
             return res.json({
                 text: "Sorry, only authorized personnel can approve/deny requests."
             });
         }
         
-        const formData = pendingRequests.get(requestId);
-        if (!formData) {
-            return res.json({
-                text: "This request has expired or was already processed."
-            });
-        }
-        
         // Handle different actions
-        switch (action.action_id) {
-            case 'approve_all':
-await handleApproveAll(res, payload, requestId, formData);
-return;                
-            case 'partial_approval':
-                return handlePartialApproval(res, payload, requestId, formData);
-                
-            case 'deny_request':
-                return handleDeny(res, payload, requestId, formData);
-                
-            default:
-                res.status(400).send('Unknown action');
+        if (action.action_id === 'approve_all') {
+            await handleApproveAll(res, payload, requestId, formData);
+        } else if (action.action_id === 'partial_approval') {
+            await handlePartialApproval(res, payload, requestId, formData);
+        } else if (action.action_id === 'deny_request') {
+            await handleDeny(res, payload, requestId, formData);
+        } else {
+            res.status(400).send('Unknown action');
         }
         
     } catch (error) {
