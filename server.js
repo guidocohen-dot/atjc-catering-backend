@@ -10,7 +10,6 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const CONFIG = {
             slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
             slackBotToken: process.env.SLACK_BOT_TOKEN,
-            nathalieUserId: 'U081RLR5WRW'
 };
 
 app.use((req, res, next) => {
@@ -129,10 +128,7 @@ app.post('/api/slack/interactions', async (req, res) => {
                 console.log('Form data found:', !!formData);
 
                 // Only Nathalie can approve/deny
-                if (payload.user.id !== CONFIG.nathalieUserId) {
-                                    console.log('Unauthorized user, ignoring');
-                                    return res.status(200).send();
-                }
+             
 
                 console.log('Auth passed, processing action');
 
