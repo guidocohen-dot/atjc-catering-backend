@@ -283,8 +283,8 @@ if (false && !verifySlackSignature(req)) {
         // Handle different actions
         switch (action.action_id) {
             case 'approve_all':
-                return handleApproveAll(res, payload, requestId, formData);
-                
+await handleApproveAll(res, payload, requestId, formData);
+return;                
             case 'partial_approval':
                 return handlePartialApproval(res, payload, requestId, formData);
                 
