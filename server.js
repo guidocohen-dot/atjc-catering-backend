@@ -256,6 +256,7 @@ app.post('/api/submit-request', async (req, res) => {
 // POST endpoint - Handle Slack button interactions
 app.post('/api/slack/interactions', async (req, res) => {
     try {
+        console.log('=== SLACK INTERACTION RECEIVED ===', JSON.stringify(req.body).substring(0, 200));
         // Verify Slack signature
 if (false && !verifySlackSignature(req)) {
             return res.status(401).send('Invalid signature');
