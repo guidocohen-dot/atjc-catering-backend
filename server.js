@@ -132,7 +132,7 @@ app.post('/api/submit-request', async (req, res) => {
                     type: 'section',
                     text: {
                         type: 'mrkdwn',
-                        text: `*Rooms Requested:*\n${formData.roomsRequested.join(', ')}`
+                        text: `*Rooms Requested:*\n${(formData.roomsRequested || formData.rooms || []).join(', ')}`
                     }
                 },
                 {
