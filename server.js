@@ -302,56 +302,44 @@ if (false && !verifySlackSignature(req)) {
 });
 
 // Handle full approval
-function handleApproveAll(res, payload, requestId, formData) {
-    // Open modal for confirmation and optional notes
-    res.json({
-        response_action: "push",
-        view: {
-            type: "modal",
-            callback_id: `approve_confirm_${requestId}`,
-            title: {
-                type: "plain_text",
-                text: "Approve Request"
-            },
-            submit: {
-                type: "plain_text",
-                text: "Confirm Approval"
-            },
-            close: {
-                type: "plain_text",
-                text: "Cancel"
-            },
-            blocks: [
-                {
-                    type: "section",
-                    text: {
-                        type: "mrkdwn",
-                        text: `*Approving:* ${formData.eventName}\n*All requested rooms will be approved*`
-                    }
-                },
-                {
-                    type: "input",
-                    block_id: "notes_block",
-                    optional: true,
-                    label: {
-                        type: "plain_text",
-                        text: "Additional Notes (optional)"
-                    },
-                    element: {
-                        type: "plain_text_input",
-                        action_id: "notes_input",
-                        multiline: true,
-                        placeholder: {
-                            type: "plain_text",
-                            text: "Any additional instructions or notes..."
-                        }
-                    }
-                }
-            ]
-        }
-    });
-}
+async function handleApproveAll(res, payload, requestId, formData) {
+  try {
+    // Send immediate acknowledgment to Slack
+    res.status(200).send();
+    
+    console.log('Approve All clicked for request:', requestId);
+    
+    // Send approval email
+    const emailSubject = `✅ Event Approved: ${formData.eventName}`;
+    const emailBody = `
+<h2>Catering Event Request APPROVED</h2>
 
+<h3>Event Details</h3>
+<p><strong>Event Name:</strong> ${formData.eventName}</p>
+<p><strong>Client Name:</strong> ${formData.clientName}</p>
+<p><strong>Event Date:</strong> ${formData.eventDate}</p>
+<p><strong>Expected Guests:</strong> ${formData.expectedGuests}</p>
+
+<h3>Timeline</h3>
+<p><strong>Setup Start:</strong> ${formData.setupStartTime}</p>
+<p><strong>Event Time:</strong> ${formData.eventStartTime} - ${formData.eventEndTime}</p>
+<p><strong>Teardown Complete:</strong> ${formData.teardownCompleteTime}</p>
+
+<h3>Approved Rooms</h3>
+<ul>
+${formData.roomsRequested.map(room => `<li>${room}</li>`).join('\n')}
+</ul>
+
+<h3>Contact Information</h3>
+<p><strong>Party Planner:</strong> ${formData.partyPlannerName}</p>
+<p><strong>Email:</strong> ${formData.partyPlannerEmail}</p>
+<p><strong>Phone:</strong> ${formData.partyPlannerPhone}</p>
+
+<p><em>Request ID: ${requestId}</em></p>
+`;
+
+    await sendEmail(
+      C
 // Handle partial approval
 function handlePartialApproval(res, payload, requestId, formData) {
     // Create checkboxes for each requested room
