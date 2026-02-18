@@ -427,7 +427,7 @@ await sendEmail(
     }
   }
 }
-      C
+      
 // Handle partial approval
 function handlePartialApproval(res, payload, requestId, formData) {
     // Create checkboxes for each requested room
