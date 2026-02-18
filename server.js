@@ -337,8 +337,96 @@ ${formData.roomsRequested.map(room => `<li>${room}</li>`).join('\n')}
 
 <p><em>Request ID: ${requestId}</em></p>
 `;
-
-    await sendEmail(
+await sendEmail(
+      CONFIG.catererEmail,
+      formData.partyPlannerEmail,
+      emailSubject,
+      emailBody
+    );
+    
+    console.log('Approval email sent successfully');
+    
+    // Update the Slack message to show it was approved
+    const updateResponse = await fetch(payload.response_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        replace_original: true,
+        text: `✅ *APPROVED* - ${formData.eventName}`,
+        blocks: [
+          {
+            type: 'header',
+            text: {
+              type: 'plain_text',
+              text: '✅ Request Approved',
+              emoji: true
+            }
+          },
+          {
+            type: 'section',
+            fields: [
+              {
+                type: 'mrkdwn',
+                text: `*Event:*\n${formData.eventName}`
+              },
+              {
+                type: 'mrkdwn',
+                text: `*Client:*\n${formData.clientName}`
+              },
+              {
+                type: 'mrkdwn',
+                text: `*Date:*\n${formData.eventDate}`
+              },
+              {
+                type: 'mrkdwn',
+                text: `*Guests:*\n${formData.expectedGuests}`
+              }
+            ]
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Status:* All rooms approved\n*Approved by:* <@${payload.user.id}>`
+            }
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: `Approval email sent to ${CONFIG.catererEmail}`
+              }
+            ]
+          }
+        ]
+      })
+    });
+    
+    if (!updateResponse.ok) {
+      console.error('Failed to update Slack message');
+    }
+    
+    // Remove from pending requests
+    pendingRequests.delete(requestId);
+    
+  } catch (error) {
+    console.error('Error in handleApproveAll:', error);
+    
+    // Try to send error message back to Slack
+    try {
+      await fetch(payload.response_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: '❌ Error processing approval. Please try again or contact support.'
+        })
+      });
+    } catch (e) {
+      console.error('Failed to send error message to Slack:', e);
+    }
+  }
+}
       C
 // Handle partial approval
 function handlePartialApproval(res, payload, requestId, formData) {
