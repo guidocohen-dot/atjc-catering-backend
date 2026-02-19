@@ -55,7 +55,7 @@ app.post('/api/submit-request', async (req, res) => {
       blocks: [
         {
           type: 'header',
-          text: { type: 'plain_text', text: '🎉 New Catering Event Request', emoji: true }
+          text: { type: 'plain_text', text: '\uD83C\uDF89 New Catering Event Request', emoji: true }
         },
         {
           type: 'section',
@@ -151,18 +151,15 @@ app.post('/api/slack/interactions', async (req, res) => {
 
     const payload = JSON.parse(req.body.payload);
     const action = payload.actions[0];
+    const responseUrl = payload.response_url;
 
     console.log('Action ID:', action.action_id);
     console.log('User ID:', payload.user.id);
+    console.log('Response URL present:', !!responseUrl);
 
     const buttonData = JSON.parse(action.value);
     const formData = buttonData.formData;
-    const requestId = buttonData.requestId;
-
     console.log('Form data found:', !!formData);
-
-    // Acknowledge Slack immediately (must respond within 3 seconds)
-    res.status(200).send();
 
     const channelId = payload.channel.id;
     const messageTs = payload.message.ts;
@@ -177,21 +174,62 @@ app.post('/api/slack/interactions', async (req, res) => {
     let statusLine;
 
     if (action.action_id === 'approve_all') {
-      replyText = '\u2705 Approved by <@' + payload.user.id + '> on ' + now;
+      replyText = '\u2705 Approved by <@' + payload.user.id + '> on ' + now + '\nFYI <@U02Q2P46PSQ>';
       statusLine = '\u2705 APPROVED';
     } else if (action.action_id === 'partial_approval') {
       replyText = '\u26A0\uFE0F Partial Approval by <@' + payload.user.id + '> on ' + now +
-        '\nPlease reply to this thread specifying which rooms are approved and which are unavailable.';
+        '\nPlease reply to this thread specifying which rooms are approved and which are unavailable.' +
+        '\nFYI <@U02Q2P46PSQ>';
       statusLine = '\u26A0\uFE0F PARTIAL APPROVAL';
     } else if (action.action_id === 'deny_request') {
-      replyText = '\u274C Denied by <@' + payload.user.id + '> on ' + now;
+      replyText = '\u274C Denied by <@' + payload.user.id + '> on ' + now + '\nFYI <@U02Q2P46PSQ>';
       statusLine = '\u274C DENIED';
     } else {
       console.log('Unknown action:', action.action_id);
+      res.status(200).send();
       return;
     }
 
-    // Post thread reply
+    // Respond to Slack immediately (must be within 3 seconds)
+    res.status(200).send();
+
+    const f = formData;
+    const rooms = Array.isArray(f.rooms) ? f.rooms.join('\n') : (f.rooms || 'N/A');
+
+    // Update the original message (remove buttons, show status) via response_url
+    const updatedMessage = {
+      replace_original: true,
+      text: statusLine + ' - ' + f.eventName,
+      blocks: [
+        {
+          type: 'header',
+          text: { type: 'plain_text', text: 'Catering Event Request', emoji: true }
+        },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: '*Event:*\n' + f.eventName },
+            { type: 'mrkdwn', text: '*Client:*\n' + f.clientName },
+            { type: 'mrkdwn', text: '*Event Date:*\n' + formatDate(f.eventDate) },
+            { type: 'mrkdwn', text: '*Guest Count:*\n' + (f.guestCount || 'N/A') }
+          ]
+        },
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: '*Rooms:*\n' + rooms }
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '*Status:* ' + statusLine + '\n*By:* <@' + payload.user.id + '> on ' + now
+          }
+        }
+      ]
+    };
+
+    // Post thread reply using bot token
+    console.log('Posting thread reply...');
     const replyResponse = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
@@ -207,53 +245,21 @@ app.post('/api/slack/interactions', async (req, res) => {
     const replyResult = await replyResponse.json();
     console.log('Thread reply result:', JSON.stringify(replyResult));
 
-    // Update original message to remove buttons and show status
-    const f = formData;
-    const rooms = Array.isArray(f.rooms) ? f.rooms.join('\n') : (f.rooms || 'N/A');
-
-    const updateResponse = await fetch('https://slack.com/api/chat.update', {
+    // Update original message via response_url (no auth needed, faster)
+    console.log('Updating original message...');
+    const updateResponse = await fetch(responseUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + CONFIG.slackBotToken
-      },
-      body: JSON.stringify({
-        channel: channelId,
-        ts: messageTs,
-        text: statusLine + ' - ' + f.eventName,
-        blocks: [
-          {
-            type: 'header',
-            text: { type: 'plain_text', text: 'Catering Event Request', emoji: true }
-          },
-          {
-            type: 'section',
-            fields: [
-              { type: 'mrkdwn', text: '*Event:*\n' + f.eventName },
-              { type: 'mrkdwn', text: '*Client:*\n' + f.clientName },
-              { type: 'mrkdwn', text: '*Event Date:*\n' + formatDate(f.eventDate) },
-              { type: 'mrkdwn', text: '*Guest Count:*\n' + (f.guestCount || 'N/A') }
-            ]
-          },
-          {
-            type: 'section',
-            text: { type: 'mrkdwn', text: '*Rooms:*\n' + rooms }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: '*Status:* ' + statusLine + '\n*By:* <@' + payload.user.id + '> on ' + now
-            }
-          }
-        ]
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedMessage)
     });
-    const updateResult = await updateResponse.json();
-    console.log('Message update result:', JSON.stringify(updateResult));
+    const updateText = await updateResponse.text();
+    console.log('Update result:', updateText);
+
+    console.log('Done!');
 
   } catch (error) {
     console.error('Error handling interaction:', error);
+    res.status(200).send(); // Always 200 to Slack
   }
 });
 
