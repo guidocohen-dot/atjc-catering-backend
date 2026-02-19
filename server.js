@@ -60,9 +60,9 @@ app.post('/api/submit-request', async (req, res) => {
                                                                         type: 'section',
                                                                         text: {
                                                                                                         type: 'mrkdwn',
-                                                                                                        text: '*Party Planner:*\n' + formData.partyPlannerName +
-                                                                                                                                              '\n' + formData.partyPlannerEmail +
-                                                                                                                                              '\n' + formData.partyPlannerPhone
+                                                                                                        text: '*Party Planner:*\\n' + formData.plannerName +
+                                                                                                                        '\\n' + formData.plannerEmail +
+                                                                                                                        '\\n' + formData.plannerPhone
                                                                         }
                                             },
                                             {
@@ -203,7 +203,8 @@ app.post('/api/slack/interactions', async (req, res) => {
                                                                                                             { type: 'mrkdwn', text: '*Event:*\n' + formData.eventName },
                                                                                                             { type: 'mrkdwn', text: '*Client:*\n' + formData.clientName },
                                                                                                             { type: 'mrkdwn', text: '*Date:*\n' + formData.eventDate },
-                                                                                                            { type: 'mrkdwn', text: '*Guests:*\n' + formData.expectedGuests }
+                                                                                                            { type: 'mrkdwn', text: '*Guests:*
+' + formData.guestCount }
                                                                                                                                     ]
                                                                     },
                                                                     {
