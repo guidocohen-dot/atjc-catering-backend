@@ -60,9 +60,10 @@ app.post('/api/submit-request', async (req, res) => {
                                                                         type: 'section',
                                                                         text: {
                                                                                                         type: 'mrkdwn',
-                                                                                                        text: '*Party Planner:*\\n' + formData.plannerName +
-                                                                                                                        '\\n' + formData.plannerEmail +
-                                                                                                                        '\\n' + formData.plannerPhone
+                                                                                                            text: '*Party Planner:*\n' +
+                                                                                                            formData.plannerName +
+                                                                                                            '\n' + formData.plannerEmail +
+                                                                                                            '\n' + formData.plannerPhone
                                                                         }
                                             },
                                             {
