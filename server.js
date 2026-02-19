@@ -18,6 +18,23 @@ app.use((req, res, next) => {
   next();
 });
 
+// Format date: "2026-03-20" -> "Friday, March 20, 2026"
+function formatDate(dateStr) {
+  if (!dateStr) return 'N/A';
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+// Format time: "18:00" -> "6:00 PM"
+function formatTime(timeStr) {
+  if (!timeStr) return 'N/A';
+  const [h, m] = timeStr.split(':');
+  const hour = parseInt(h);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return hour12 + ':' + m + ' ' + ampm;
+}
+
 // Submit catering request - posts to Slack
 app.post('/api/submit-request', async (req, res) => {
   try {
@@ -25,44 +42,62 @@ app.post('/api/submit-request', async (req, res) => {
     const requestId = 'req_' + Date.now();
     console.log('Received request:', requestId);
 
-    const rooms = Array.isArray(f.rooms) ? f.rooms.join(', ') : (f.rooms || 'N/A');
+    const rooms = Array.isArray(f.rooms) ? f.rooms.join('\n') : (f.rooms || 'N/A');
+
+    const setupDateTime = formatDate(f.setupStartDate) + ' at ' + formatTime(f.setupStartTime);
+    const teardownDateTime = formatDate(f.teardownDate) + ' at ' + formatTime(f.teardownTime);
+
+    const rabbiLine = f.officiatingRabbi ? '*Officiating Rabbi:*\n' + f.officiatingRabbi + '\n\n' : '';
+    const notesLine = f.additionalNotes ? '\n\n*Additional Notes:*\n' + f.additionalNotes : '';
 
     const slackMessage = {
       text: 'New Catering Request: ' + f.eventName,
       blocks: [
         {
           type: 'header',
-          text: { type: 'plain_text', text: 'New Catering Event Request', emoji: true }
+          text: { type: 'plain_text', text: '🎉 New Catering Event Request', emoji: true }
         },
         {
           type: 'section',
           fields: [
             { type: 'mrkdwn', text: '*Event:*\n' + f.eventName },
             { type: 'mrkdwn', text: '*Client:*\n' + f.clientName },
-            { type: 'mrkdwn', text: '*Date:*\n' + f.eventDate },
-            { type: 'mrkdwn', text: '*Guests:*\n' + f.guestCount }
+            { type: 'mrkdwn', text: '*Event Date:*\n' + formatDate(f.eventDate) },
+            { type: 'mrkdwn', text: '*Guest Count:*\n' + (f.guestCount || 'N/A') }
           ]
         },
         {
           type: 'section',
-          text: { type: 'mrkdwn', text: '*Rooms Requested:*\n' + rooms }
-        },
-        {
-          type: 'section',
           text: {
             type: 'mrkdwn',
-            text: '*Setup:* ' + f.setupStartTime +
-              '\n*Event:* ' + f.eventStartTime + ' - ' + f.eventEndTime +
-              '\n*Teardown:* ' + f.teardownTime
+            text: rabbiLine + '*\uD83D\uDCC5 Timeline*\n\u2022 Setup begins: ' + setupDateTime +
+              '\n\u2022 Event: ' + formatTime(f.eventStartTime) + ' - ' + formatTime(f.eventEndTime) +
+              '\n\u2022 Teardown complete: ' + teardownDateTime
           }
         },
         {
           type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: '*Party Planner:*\n' + (f.plannerName || 'N/A') +
+                '\n' + (f.plannerEmail || '') +
+                '\n' + (f.plannerPhone || '')
+            },
+            {
+              type: 'mrkdwn',
+              text: '*Parking & Music:*\n' +
+                'Valet: ' + (f.valetParking || 'N/A') +
+                '\nEasement: ' + (f.easementParking || 'N/A') +
+                '\nLoud Music (work hours): ' + (f.loudMusic || 'N/A')
+            }
+          ]
+        },
+        {
+          type: 'section',
           text: {
             type: 'mrkdwn',
-            text: '*Party Planner:*\n' + f.plannerName +
-              '\n' + f.plannerEmail +
-              '\n' + f.plannerPhone
+            text: '*Rooms Requested:*\n' + rooms + notesLine
           }
         },
         {
@@ -71,20 +106,20 @@ app.post('/api/submit-request', async (req, res) => {
           elements: [
             {
               type: 'button',
-              text: { type: 'plain_text', text: 'Approve All', emoji: true },
+              text: { type: 'plain_text', text: '\u2705 Approve All', emoji: true },
               style: 'primary',
               action_id: 'approve_all',
               value: JSON.stringify({ requestId: requestId, formData: f })
             },
             {
               type: 'button',
-              text: { type: 'plain_text', text: 'Partial Approval', emoji: true },
+              text: { type: 'plain_text', text: '\u26A0\uFE0F Partial Approval', emoji: true },
               action_id: 'partial_approval',
               value: JSON.stringify({ requestId: requestId, formData: f })
             },
             {
               type: 'button',
-              text: { type: 'plain_text', text: 'Deny', emoji: true },
+              text: { type: 'plain_text', text: '\u274C Deny', emoji: true },
               style: 'danger',
               action_id: 'deny_request',
               value: JSON.stringify({ requestId: requestId, formData: f })
@@ -142,15 +177,15 @@ app.post('/api/slack/interactions', async (req, res) => {
     let statusLine;
 
     if (action.action_id === 'approve_all') {
-      replyText = 'Approved by <@' + payload.user.id + '> on ' + now;
-      statusLine = 'APPROVED';
+      replyText = '\u2705 Approved by <@' + payload.user.id + '> on ' + now;
+      statusLine = '\u2705 APPROVED';
     } else if (action.action_id === 'partial_approval') {
-      replyText = 'Partial Approval by <@' + payload.user.id + '> on ' + now +
+      replyText = '\u26A0\uFE0F Partial Approval by <@' + payload.user.id + '> on ' + now +
         '\nPlease reply to this thread specifying which rooms are approved and which are unavailable.';
-      statusLine = 'PARTIAL APPROVAL';
+      statusLine = '\u26A0\uFE0F PARTIAL APPROVAL';
     } else if (action.action_id === 'deny_request') {
-      replyText = 'Denied by <@' + payload.user.id + '> on ' + now;
-      statusLine = 'DENIED';
+      replyText = '\u274C Denied by <@' + payload.user.id + '> on ' + now;
+      statusLine = '\u274C DENIED';
     } else {
       console.log('Unknown action:', action.action_id);
       return;
@@ -172,7 +207,10 @@ app.post('/api/slack/interactions', async (req, res) => {
     const replyResult = await replyResponse.json();
     console.log('Thread reply result:', JSON.stringify(replyResult));
 
-    // Update original message to remove buttons
+    // Update original message to remove buttons and show status
+    const f = formData;
+    const rooms = Array.isArray(f.rooms) ? f.rooms.join('\n') : (f.rooms || 'N/A');
+
     const updateResponse = await fetch('https://slack.com/api/chat.update', {
       method: 'POST',
       headers: {
@@ -182,7 +220,7 @@ app.post('/api/slack/interactions', async (req, res) => {
       body: JSON.stringify({
         channel: channelId,
         ts: messageTs,
-        text: statusLine + ' - ' + formData.eventName,
+        text: statusLine + ' - ' + f.eventName,
         blocks: [
           {
             type: 'header',
@@ -191,11 +229,15 @@ app.post('/api/slack/interactions', async (req, res) => {
           {
             type: 'section',
             fields: [
-              { type: 'mrkdwn', text: '*Event:*\n' + formData.eventName },
-              { type: 'mrkdwn', text: '*Client:*\n' + formData.clientName },
-              { type: 'mrkdwn', text: '*Date:*\n' + formData.eventDate },
-              { type: 'mrkdwn', text: '*Guests:*\n' + formData.guestCount }
+              { type: 'mrkdwn', text: '*Event:*\n' + f.eventName },
+              { type: 'mrkdwn', text: '*Client:*\n' + f.clientName },
+              { type: 'mrkdwn', text: '*Event Date:*\n' + formatDate(f.eventDate) },
+              { type: 'mrkdwn', text: '*Guest Count:*\n' + (f.guestCount || 'N/A') }
             ]
+          },
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: '*Rooms:*\n' + rooms }
           },
           {
             type: 'section',
