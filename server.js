@@ -40,7 +40,7 @@ app.post('/api/submit-request', async (req, res) => {
                                                                                 { type: 'mrkdwn', text: '*Event:*\n' + formData.eventName },
                                                                                 { type: 'mrkdwn', text: '*Client:*\n' + formData.clientName },
                                                                                 { type: 'mrkdwn', text: '*Date:*\n' + formData.eventDate },
-                                                                                { type: 'mrkdwn', text: '*Guests:*\n' + formData.expectedGuests }
+                                                                                { type: 'mrkdwn', text: '*Guests:*\\n' + formData.guestCount }
                                                                                                     ]
                                             },
                                             {
@@ -53,7 +53,7 @@ app.post('/api/submit-request', async (req, res) => {
                                                                                                         type: 'mrkdwn',
                                                                                                         text: '*Setup:* ' + formData.setupStartTime +
                                                                                                                                               '\n*Event:* ' + formData.eventStartTime + ' - ' + formData.eventEndTime +
-                                                                                                                                              '\n*Teardown:* ' + formData.teardownCompleteTime
+                                                                                                                                              '\n*Teardown:* ' + formData.teardownTime
                                                                         }
                                             },
                                             {
