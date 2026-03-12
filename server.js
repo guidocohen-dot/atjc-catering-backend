@@ -1,9 +1,8 @@
 // server.js - ATJC Catering Request System
-
 const express = require('express');
 const bodyParser = require('body-parser');
-
 const app = express();
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -43,12 +42,35 @@ app.post('/api/submit-request', async (req, res) => {
     console.log('Received request:', requestId);
 
     const rooms = Array.isArray(f.rooms) ? f.rooms.join('\n') : (f.rooms || 'N/A');
-
     const setupDateTime = formatDate(f.setupStartDate) + ' at ' + formatTime(f.setupStartTime);
     const teardownDateTime = formatDate(f.teardownDate) + ' at ' + formatTime(f.teardownTime);
-
     const rabbiLine = f.officiatingRabbi ? '*Officiating Rabbi:*\n' + f.officiatingRabbi + '\n\n' : '';
     const notesLine = f.additionalNotes ? '\n\n*Additional Notes:*\n' + f.additionalNotes : '';
+
+    // FIX #1: Store only the essential fields in button values to stay under
+    // Slack's 2000-character limit. The full formData was exceeding this limit,
+    // causing buttons to be silently broken.
+    const compactData = {
+      requestId: requestId,
+      eventName:      f.eventName      || 'N/A',
+      clientName:     f.clientName     || 'N/A',
+      eventDate:      f.eventDate      || '',
+      guestCount:     f.guestCount     || 'N/A',
+      rooms:          rooms,
+      setupDateTime:  setupDateTime,
+      teardownDateTime: teardownDateTime,
+      eventStartTime: f.eventStartTime || '',
+      eventEndTime:   f.eventEndTime   || '',
+      plannerName:    f.plannerName    || 'N/A',
+      plannerEmail:   f.plannerEmail   || '',
+      plannerPhone:   f.plannerPhone   || '',
+      valetParking:   f.valetParking   || 'N/A',
+      easementParking: f.easementParking || 'N/A',
+      loudMusic:      f.loudMusic      || 'N/A',
+      officiatingRabbi: f.officiatingRabbi || '',
+      additionalNotes: f.additionalNotes || '',
+    };
+    const buttonValue = JSON.stringify(compactData);
 
     const slackMessage = {
       text: 'New Catering Request: ' + f.eventName,
@@ -109,20 +131,20 @@ app.post('/api/submit-request', async (req, res) => {
               text: { type: 'plain_text', text: '\u2705 Approve All', emoji: true },
               style: 'primary',
               action_id: 'approve_all',
-              value: JSON.stringify({ requestId: requestId, formData: f })
+              value: buttonValue   // FIX #1: compact value, not full formData
             },
             {
               type: 'button',
               text: { type: 'plain_text', text: '\u26A0\uFE0F Partial Approval', emoji: true },
               action_id: 'partial_approval',
-              value: JSON.stringify({ requestId: requestId, formData: f })
+              value: buttonValue   // FIX #1: compact value, not full formData
             },
             {
               type: 'button',
               text: { type: 'plain_text', text: '\u274C Deny', emoji: true },
               style: 'danger',
               action_id: 'deny_request',
-              value: JSON.stringify({ requestId: requestId, formData: f })
+              value: buttonValue   // FIX #1: compact value, not full formData
             }
           ]
         }
@@ -157,9 +179,9 @@ app.post('/api/slack/interactions', async (req, res) => {
     console.log('User ID:', payload.user.id);
     console.log('Response URL present:', !!responseUrl);
 
-    const buttonData = JSON.parse(action.value);
-    const formData = buttonData.formData;
-    console.log('Form data found:', !!formData);
+    // FIX #1 (continued): buttonData now IS the formData (no nested formData key)
+    const f = JSON.parse(action.value);
+    console.log('Button data found:', !!f);
 
     const channelId = payload.channel.id;
     const messageTs = payload.message.ts;
@@ -190,13 +212,7 @@ app.post('/api/slack/interactions', async (req, res) => {
       return;
     }
 
-    // Respond to Slack immediately (must be within 3 seconds)
-    res.status(200).send();
-
-    const f = formData;
-    const rooms = Array.isArray(f.rooms) ? f.rooms.join('\n') : (f.rooms || 'N/A');
-
-    // Update the original message (remove buttons, show status) via response_url
+    // Build the updated message (buttons removed, status shown)
     const updatedMessage = {
       replace_original: true,
       text: statusLine + ' - ' + f.eventName,
@@ -211,12 +227,12 @@ app.post('/api/slack/interactions', async (req, res) => {
             { type: 'mrkdwn', text: '*Event:*\n' + f.eventName },
             { type: 'mrkdwn', text: '*Client:*\n' + f.clientName },
             { type: 'mrkdwn', text: '*Event Date:*\n' + formatDate(f.eventDate) },
-            { type: 'mrkdwn', text: '*Guest Count:*\n' + (f.guestCount || 'N/A') }
+            { type: 'mrkdwn', text: '*Guest Count:*\n' + f.guestCount }
           ]
         },
         {
           type: 'section',
-          text: { type: 'mrkdwn', text: '*Rooms:*\n' + rooms }
+          text: { type: 'mrkdwn', text: '*Rooms:*\n' + f.rooms }
         },
         {
           type: 'section',
@@ -228,34 +244,40 @@ app.post('/api/slack/interactions', async (req, res) => {
       ]
     };
 
-    // Post thread reply using bot token
-    console.log('Posting thread reply...');
-    const replyResponse = await fetch('https://slack.com/api/chat.postMessage', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + CONFIG.slackBotToken
-      },
-      body: JSON.stringify({
-        channel: channelId,
-        thread_ts: messageTs,
-        text: replyText
+    // FIX #2: Do ALL async work BEFORE sending the 200 response.
+    // On Vercel serverless, calling res.send() first allows the platform to
+    // terminate the function before the follow-up fetches complete, so the
+    // thread reply and message update would never actually run.
+    // Running both calls in parallel keeps us well within Slack's 3-second window.
+    console.log('Posting thread reply and updating original message in parallel...');
+    const [replyResponse, updateResponse] = await Promise.all([
+      fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + CONFIG.slackBotToken
+        },
+        body: JSON.stringify({
+          channel: channelId,
+          thread_ts: messageTs,
+          text: replyText
+        })
+      }),
+      fetch(responseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedMessage)
       })
-    });
+    ]);
+
     const replyResult = await replyResponse.json();
-    console.log('Thread reply result:', JSON.stringify(replyResult));
-
-    // Update original message via response_url (no auth needed, faster)
-    console.log('Updating original message...');
-    const updateResponse = await fetch(responseUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedMessage)
-    });
     const updateText = await updateResponse.text();
+    console.log('Thread reply result:', JSON.stringify(replyResult));
     console.log('Update result:', updateText);
+    console.log('Done! Sending 200 to Slack.');
 
-    console.log('Done!');
+    // Respond to Slack AFTER all work is complete
+    res.status(200).send();
 
   } catch (error) {
     console.error('Error handling interaction:', error);
