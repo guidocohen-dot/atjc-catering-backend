@@ -47,9 +47,6 @@ app.post('/api/submit-request', async (req, res) => {
     const rabbiLine = f.officiatingRabbi ? '*Officiating Rabbi:*\n' + f.officiatingRabbi + '\n\n' : '';
     const notesLine = f.additionalNotes ? '\n\n*Additional Notes:*\n' + f.additionalNotes : '';
 
-    // FIX #1: Store only the essential fields in button values to stay under
-    // Slack's 2000-character limit. The full formData was exceeding this limit,
-    // causing buttons to be silently broken.
     const compactData = {
       requestId: requestId,
       eventName:      f.eventName      || 'N/A',
@@ -77,7 +74,7 @@ app.post('/api/submit-request', async (req, res) => {
       blocks: [
         {
           type: 'header',
-          text: { type: 'plain_text', text: '\uD83C\uDF89 New Catering Event Request', emoji: true }
+          text: { type: 'plain_text', text: '🎉 New Catering Event Request', emoji: true }
         },
         {
           type: 'section',
@@ -92,9 +89,9 @@ app.post('/api/submit-request', async (req, res) => {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: rabbiLine + '*\uD83D\uDCC5 Timeline*\n\u2022 Setup begins: ' + setupDateTime +
-              '\n\u2022 Event: ' + formatTime(f.eventStartTime) + ' - ' + formatTime(f.eventEndTime) +
-              '\n\u2022 Teardown complete: ' + teardownDateTime
+            text: rabbiLine + '*📅 Timeline*\n• Setup begins: ' + setupDateTime +
+              '\n• Event: ' + formatTime(f.eventStartTime) + ' - ' + formatTime(f.eventEndTime) +
+              '\n• Teardown complete: ' + teardownDateTime
           }
         },
         {
@@ -128,23 +125,23 @@ app.post('/api/submit-request', async (req, res) => {
           elements: [
             {
               type: 'button',
-              text: { type: 'plain_text', text: '\u2705 Approve All', emoji: true },
+              text: { type: 'plain_text', text: '✅ Approve All', emoji: true },
               style: 'primary',
               action_id: 'approve_all',
-              value: buttonValue   // FIX #1: compact value, not full formData
+              value: buttonValue
             },
             {
               type: 'button',
-              text: { type: 'plain_text', text: '\u26A0\uFE0F Partial Approval', emoji: true },
+              text: { type: 'plain_text', text: '⚠️ Partial Approval', emoji: true },
               action_id: 'partial_approval',
-              value: buttonValue   // FIX #1: compact value, not full formData
+              value: buttonValue
             },
             {
               type: 'button',
-              text: { type: 'plain_text', text: '\u274C Deny', emoji: true },
+              text: { type: 'plain_text', text: '❌ Deny', emoji: true },
               style: 'danger',
               action_id: 'deny_request',
-              value: buttonValue   // FIX #1: compact value, not full formData
+              value: buttonValue
             }
           ]
         }
@@ -179,12 +176,8 @@ app.post('/api/slack/interactions', async (req, res) => {
     console.log('User ID:', payload.user.id);
     console.log('Response URL present:', !!responseUrl);
 
-    // FIX #1 (continued): handle both old button format {requestId, formData:{...}}
-    // and new flat compactData format. Old messages in Slack still carry the old
-    // format, so we need backward compatibility to avoid "undefined" fields.
     const parsed = JSON.parse(action.value);
-    const f = parsed.formData || parsed;  // old format nested under formData; new format is flat
-    const rooms = Array.isArray(f.rooms) ? f.rooms.join('\n') : (f.rooms || 'N/A');
+    const f = parsed.formData || parsed;  // backward compat: old format nested under formData
     console.log('Button data found:', !!f);
 
     const channelId = payload.channel.id;
@@ -197,95 +190,45 @@ app.post('/api/slack/interactions', async (req, res) => {
     });
 
     let replyText;
-    let statusLine;
 
     if (action.action_id === 'approve_all') {
-      replyText = '\u2705 Approved by <@' + payload.user.id + '> on ' + now + '\nFYI <@U02Q2P46PSQ>';
-      statusLine = '\u2705 APPROVED';
+      replyText = '✅ Approved by <@' + payload.user.id + '> on ' + now + '\nFYI <@U02Q2P46PSQ>';
     } else if (action.action_id === 'partial_approval') {
-      replyText = '\u26A0\uFE0F Partial Approval by <@' + payload.user.id + '> on ' + now +
+      replyText = '⚠️ Partial Approval by <@' + payload.user.id + '> on ' + now +
         '\nPlease reply to this thread specifying which rooms are approved and which are unavailable.' +
         '\nFYI <@U02Q2P46PSQ>';
-      statusLine = '\u26A0\uFE0F PARTIAL APPROVAL';
     } else if (action.action_id === 'deny_request') {
-      replyText = '\u274C Denied by <@' + payload.user.id + '> on ' + now + '\nFYI <@U02Q2P46PSQ>';
-      statusLine = '\u274C DENIED';
+      replyText = '❌ Denied by <@' + payload.user.id + '> on ' + now + '\nFYI <@U02Q2P46PSQ>';
     } else {
       console.log('Unknown action:', action.action_id);
       res.status(200).send();
       return;
     }
 
-    // Build the updated message (buttons removed, status shown)
-    const updatedMessage = {
-      replace_original: true,
-      text: statusLine + ' - ' + (f.eventName || 'N/A'),
-      blocks: [
-        {
-          type: 'header',
-          text: { type: 'plain_text', text: 'Catering Event Request', emoji: true }
-        },
-        {
-          type: 'section',
-          fields: [
-            { type: 'mrkdwn', text: '*Event:*\n' + (f.eventName || 'N/A') },
-            { type: 'mrkdwn', text: '*Client:*\n' + (f.clientName || 'N/A') },
-            { type: 'mrkdwn', text: '*Event Date:*\n' + formatDate(f.eventDate) },
-            { type: 'mrkdwn', text: '*Guest Count:*\n' + (f.guestCount || 'N/A') }
-          ]
-        },
-        {
-          type: 'section',
-          text: { type: 'mrkdwn', text: '*Rooms:*\n' + rooms }
-        },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: '*Status:* ' + statusLine + '\n*By:* <@' + payload.user.id + '> on ' + now
-          }
-        }
-      ]
-    };
-
-    // FIX #2: Do ALL async work BEFORE sending the 200 response.
-    // On Vercel serverless, calling res.send() first allows the platform to
-    // terminate the function before the follow-up fetches complete, so the
-    // thread reply and message update would never actually run.
-    // Running both calls in parallel keeps us well within Slack's 3-second window.
-    console.log('Posting thread reply and updating original message in parallel...');
-    const [replyResponse, updateResponse] = await Promise.all([
-      fetch('https://slack.com/api/chat.postMessage', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + CONFIG.slackBotToken
-        },
-        body: JSON.stringify({
-          channel: channelId,
-          thread_ts: messageTs,
-          text: replyText
-        })
-      }),
-      fetch(responseUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedMessage)
+    // Do all async work BEFORE sending the 200 response
+    console.log('Posting thread reply...');
+    const replyResponse = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + CONFIG.slackBotToken
+      },
+      body: JSON.stringify({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: replyText
       })
-    ]);
+    });
 
     const replyResult = await replyResponse.json();
-    const updateText = await updateResponse.text();
     console.log('Thread reply result:', JSON.stringify(replyResult));
-    console.log('Update result:', updateText);
     console.log('Done! Sending 200 to Slack.');
 
-    // Respond to Slack AFTER all work is complete
     res.status(200).send();
 
   } catch (error) {
     console.error('Error handling interaction:', error);
-    res.status(200).send(); // Always 200 to Slack
+    res.status(200).send();
   }
 });
 
