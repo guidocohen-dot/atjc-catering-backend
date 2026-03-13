@@ -179,8 +179,12 @@ app.post('/api/slack/interactions', async (req, res) => {
     console.log('User ID:', payload.user.id);
     console.log('Response URL present:', !!responseUrl);
 
-    // FIX #1 (continued): buttonData now IS the formData (no nested formData key)
-    const f = JSON.parse(action.value);
+    // FIX #1 (continued): handle both old button format {requestId, formData:{...}}
+    // and new flat compactData format. Old messages in Slack still carry the old
+    // format, so we need backward compatibility to avoid "undefined" fields.
+    const parsed = JSON.parse(action.value);
+    const f = parsed.formData || parsed;  // old format nested under formData; new format is flat
+    const rooms = Array.isArray(f.rooms) ? f.rooms.join('\n') : (f.rooms || 'N/A');
     console.log('Button data found:', !!f);
 
     const channelId = payload.channel.id;
@@ -215,7 +219,7 @@ app.post('/api/slack/interactions', async (req, res) => {
     // Build the updated message (buttons removed, status shown)
     const updatedMessage = {
       replace_original: true,
-      text: statusLine + ' - ' + f.eventName,
+      text: statusLine + ' - ' + (f.eventName || 'N/A'),
       blocks: [
         {
           type: 'header',
@@ -224,15 +228,15 @@ app.post('/api/slack/interactions', async (req, res) => {
         {
           type: 'section',
           fields: [
-            { type: 'mrkdwn', text: '*Event:*\n' + f.eventName },
-            { type: 'mrkdwn', text: '*Client:*\n' + f.clientName },
+            { type: 'mrkdwn', text: '*Event:*\n' + (f.eventName || 'N/A') },
+            { type: 'mrkdwn', text: '*Client:*\n' + (f.clientName || 'N/A') },
             { type: 'mrkdwn', text: '*Event Date:*\n' + formatDate(f.eventDate) },
-            { type: 'mrkdwn', text: '*Guest Count:*\n' + f.guestCount }
+            { type: 'mrkdwn', text: '*Guest Count:*\n' + (f.guestCount || 'N/A') }
           ]
         },
         {
           type: 'section',
-          text: { type: 'mrkdwn', text: '*Rooms:*\n' + f.rooms }
+          text: { type: 'mrkdwn', text: '*Rooms:*\n' + rooms }
         },
         {
           type: 'section',
